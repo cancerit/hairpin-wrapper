@@ -3,4 +3,5 @@ legacy/
 pyenv/
 dat/
 bugfix/
+__pycache__/
 
