@@ -54,6 +54,7 @@ hairpin \
 
 ### LICENSE
 
+```
 Copyright (c) 2023 Genome Research Ltd.
 
 Author: CASM/Cancer IT <cgphelp@sanger.ac.uk>
@@ -72,3 +73,4 @@ FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
 details.
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
+```
