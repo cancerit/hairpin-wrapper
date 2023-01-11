@@ -1,0 +1,165 @@
+#!/bin/bash
+
+set -e
+BINDIR="${0%/*}"
+BASEDIR="${BINDIR%/*}"
+OUTPUT="."
+HEAPMEM=10
+DEBUG=false
+
+usage() {
+	echo -e \
+	"Usage: 
+	$(basename "$0") \\
+	[ Mandatory ]
+	-v input VCF \\
+	-b BAM file corresponding to VCF \\
+	[ Optional ]
+	-o output path (defaults to current working dir)\\
+	-g specify genome build (hg37, hg38(default)) \\
+	-m set java heap memory (default 10G) \\
+	-h display help \\
+	-r display available reference genomes
+	
+	Version 1.0.7" >&2
+
+	exit 1
+}
+
+BUILD="hg38" # default
+while getopts "v:b:o:g:m:rhd" opt; do
+
+	case "$opt" in 
+		v)
+			VCF="$OPTARG"
+			;; # input VCF
+		b)
+			BAM="$OPTARG"
+			;; # input BAM
+		o)
+			OUTPUT="$OPTARG"
+			;; # path to output directory
+		g)
+			BUILD="$OPTARG"
+			# grep builds.txt for matching lines.
+			BUILD_LINE=$(grep -i "^.*${BUILD}.*=.*$" "$BASEDIR"/builds) || { echo "Error: Could not access builds.txt!"; exit 1; }
+			# if BUILD_LINE is empty, or if it contains more than one line, then
+			if [ -z "$BUILD_LINE" ] || [ "$(wc -l <<< "$BUILD_LINE")" -gt 1 ]; then 
+				echo "Unrecognised or ambiguous genome build id: $BUILD - see help for details" >&2
+				usage
+			else
+				BUILD_PATH="${BUILD_LINE##*=}"
+				echo "genome build: ${BUILD_LINE%%=*}" >&2
+			fi
+			# limit scientists to particular reference databases and genomes - take "37" or "38" as a flag
+			# deposit in the reference area on lustre.
+			# This is due to unreliable memory usage of additionalBamStatistics.jar depending on input.
+			# builds.txt contains paths to reference genomes in the format ID=REF_PATH
+			;;
+		m)
+			HEAPMEM="$OPTARG"
+			if ! [[ $HEAPMEM =~ ^[0-9]+$ ]] ; then 
+				echo "Error: Heap memory -m must be an integer" >&2
+				exit 1 
+			fi
+			;;
+		r)
+			cat "$BASEDIR"/builds
+			exit 1
+			;;
+		h)
+			less "$BASEDIR"/doc
+			exit 1
+			;;
+		d)
+			DEBUG=true
+			;;
+		?)
+			usage
+			;;
+
+	esac
+
+done
+
+if [ -z "$VCF" ] || [ -z "$BAM" ]; then
+	echo "Error: -v and -b require arguments" >&2
+	usage
+fi
+
+if [ ! -f "$VCF" ]; then
+	echo "Error: VCF does not exist!" >&2
+	exit 1
+fi
+
+if [ ! -f "$BAM" ]; then
+	echo "Error: BAM does not exist!" >&2
+	exit 1
+fi
+
+if [ ! -f "${BAM}.bai" ] ; then
+	echo "Error: ${BAM}.bai not present!"
+	exit 1
+fi
+
+if [ ! -f "${BAM}.bas" ] ; then
+	echo "Error: ${BAM}.bas not present!"
+	exit 1
+fi
+
+if [ ! -f "${BAM}.met.gz" ] ; then
+	echo "Error: ${BAM}.met.gz not present!"
+	exit 1
+fi
+
+if [ ! -d "$OUTPUT" ]; then
+	echo "Error: Output should be a directory" >&2
+	exit 1
+fi
+
+
+if "$DEBUG"; then
+	TMPFILE="$OUTPUT"
+else
+	# make local temp dir for Mathijs' scripts to output into
+	# and make sure it's cleaned up on exit with trap
+	# do it || if it fails do this
+	trap 'rm -fr "$TMPFILE"' EXIT
+	TMPFILE=$(mktemp -dp .) || 
+	{ echo "Error: could not create temporary file in current working directory" >&2; exit 1; }
+fi
+
+
+# convert to ANNOVAR, the required format for additionalBamStatistics.jar
+{ "$BINDIR"/runScriptImitateANNOVAR.sh -v "$VCF" > "${TMPFILE}/im.anv"; } || 
+{ echo "Error: conversion to annovar failed" >&2; exit 1; } # braces group commands
+
+# calculate statistics
+{
+java -Xmx"${HEAPMEM}"G -jar "$BINDIR"/additionalBamStatistics.jar \
+--input-annovar-file "${TMPFILE}/im.anv" \
+--input-bam-file "$BAM" \
+--reference "${BUILD_PATH}" \
+--output-file  "${TMPFILE}/AddBAM.anv" \
+--threads 10
+} || { echo "Error: additionalBamStatistics.jar failed" >&2; exit 1; }
+
+# add flag to VCF using calculated stats
+
+# create output path
+# ## remove longest match of */ from beginning of string (remove path)
+# % remove shortest match of .?cf* from end of string (remove e.g. '.bcf.gz')
+# if checks for trailing slash in provided output dir
+VOUT=${VCF##*/}
+if [ "${OUTPUT: -1}" == "/" ] ; then
+	OUTPATH="${OUTPUT}${VOUT%.?cf*}.hairpin.vcf"
+else
+	OUTPATH="${OUTPUT}/${VOUT%.?cf*}.hairpin.vcf"
+fi
+
+"$BASEDIR"/pyenv/bin/python "$BINDIR"/AddBAM_vcf_flagging.py "${TMPFILE}/AddBAM.anv" "$VCF" "$OUTPATH" >&2 || 
+{ echo "Error: AddBAM_vcf_flagging.py failed" >&2; exit 1; }
+
+echo "success!" >&2
+
+exit 0

@@ -1,0 +1,17 @@
+#%Module
+set rootprog hairpin
+set progver 1.0.6
+set installdir $rootprog/${rootprog}-${progver}
+set topdir /software/CGP/modules/installs/$installdir
+
+set helpcomm "Mods, path for hairpin annotation and other fragment statistics (Mathijs Scripts): $installdir"
+
+proc ModulesHelp { } {
+        global version modroot
+        puts stderr "$helpcomm"
+}
+
+module-whatis   "$helpcomm"
+
+module load java/17.0.1 samtools/1.14 python/3.10.1
+prepend-path PATH $topdir/bin

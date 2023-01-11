@@ -1,0 +1,37 @@
+HAIRPIN DETECTION MODULE v1.0.6
+
+Simple CLI for flagging of variants caused by hairpin/cruciform artifacts in LCM sequencing. 
+Incorporates a streamlined subset of the process previously known as "Mathijs' Scripts".
+
+USAGE:
+hairpin 
+-v input VCF path \
+-b BAM path \
+[-o] output path, defaults to current working directory \
+[-g] specify genome build (hg37, hg38(default)) \
+[-m] set java heap memory (default 10G) \
+[-r] display available reference genomes \
+[-h] display help \
+
+NOTES:
+Since the process requires the creation and accession of temp files,
+best run from lustre for working dir (rather than home directory).
+
+Reference genomes are specified by providing appropriate text strings to the -g flag.
+E.g. "hg38", or "g37". The input text is (conservatively) matched against an index.
+Check the index file with the -r flag to see list of available genomes.
+If a reference genome is not shown when the -r flag it is used, it is not available.
+This can be quickly resovled via a helpdesk ticket. 
+
+BACKGROUND
+Previously, scientists were performing this task with diffuse versions of a 
+small pipeline built by Mathijs and added to by others over many years. 
+This module brings together the components of that pipeline, 
+strips out the extraneous functionality, 
+and packages them into a single command, and single version, 
+for ease of use and referencing. 
+
+The various components that have been removed or pared down either unused stats, 
+or were program functionality which would be better placed elsewhere.
+such as prefiltering of input VCFs according to CLPM. 
+Do one thing, and do it well.

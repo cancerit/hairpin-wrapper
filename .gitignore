@@ -1,0 +1,6 @@
+*.job
+legacy/
+pyenv/
+dat/
+bugfix/
+
