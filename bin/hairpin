@@ -35,19 +35,17 @@ usage() {
 	[ Mandatory ]
 	-v input VCF \\
 	-b BAM file corresponding to VCF \\
+	-g path to reference genome fasta \\
 	[ Optional ]
-	-o output path (defaults to current working dir)\\
-	-g specify genome build (hg37, hg38(default)) \\
+	-o output directory (defaults to current working dir) \\
 	-m set java heap memory (default 10G) \\
-	-h display help \\
-	-r display available reference genomes
+	-h display usage \\
 	
-	Version 1.0.7" >&2
+	Version 1.0.8" >&2
 
 	exit 1
 }
 
-BUILD="hg38" # default
 while getopts "v:b:o:g:m:rhd" opt; do
 
 	case "$opt" in 
@@ -61,21 +59,8 @@ while getopts "v:b:o:g:m:rhd" opt; do
 			OUTPUT="$OPTARG"
 			;; # path to output directory
 		g)
-			BUILD="$OPTARG"
-			# grep builds.txt for matching lines.
-			BUILD_LINE=$(grep -i "^.*${BUILD}.*=.*$" "$BASEDIR"/builds) || { echo "Error: Could not access builds.txt!"; exit 1; }
-			# if BUILD_LINE is empty, or if it contains more than one line, then
-			if [ -z "$BUILD_LINE" ] || [ "$(wc -l <<< "$BUILD_LINE")" -gt 1 ]; then 
-				echo "Unrecognised or ambiguous genome build id: $BUILD - see help for details" >&2
-				usage
-			else
-				BUILD_PATH="${BUILD_LINE##*=}"
-				echo "genome build: ${BUILD_LINE%%=*}" >&2
-			fi
-			# limit scientists to particular reference databases and genomes - take "37" or "38" as a flag
-			# deposit in the reference area on lustre.
-			# This is due to unreliable memory usage of additionalBamStatistics.jar depending on input.
-			# builds.txt contains paths to reference genomes in the format ID=REF_PATH
+			BUILD_PATH="$OPTARG"
+			# path to reference genome fasta
 			;;
 		m)
 			HEAPMEM="$OPTARG"
@@ -83,14 +68,6 @@ while getopts "v:b:o:g:m:rhd" opt; do
 				echo "Error: Heap memory -m must be an integer" >&2
 				exit 1 
 			fi
-			;;
-		r)
-			cat "$BASEDIR"/builds
-			exit 1
-			;;
-		h)
-			less "$BASEDIR"/doc
-			exit 1
 			;;
 		d)
 			DEBUG=true
@@ -103,8 +80,8 @@ while getopts "v:b:o:g:m:rhd" opt; do
 
 done
 
-if [ -z "$VCF" ] || [ -z "$BAM" ]; then
-	echo "Error: -v and -b require arguments" >&2
+if [ -z "$VCF" ] || [ -z "$BAM" ] || [ -z "$BUILD_PATH" ]; then
+	echo "Error: -v, -g, -o and -b require arguments" >&2
 	usage
 fi
 
@@ -115,6 +92,11 @@ fi
 
 if [ ! -f "$BAM" ]; then
 	echo "Error: BAM does not exist!" >&2
+	exit 1
+fi
+
+if [ ! -f "$BUILD_PATH" ]; then
+	echo "Error: Reference genome does not exist" >&2
 	exit 1
 fi
 
@@ -156,16 +138,12 @@ fi
 { echo "Error: conversion to annovar failed" >&2; exit 1; } # braces group commands
 
 # calculate statistics
-{
-java -Xmx"${HEAPMEM}"G -jar "$BINDIR"/additionalBamStatistics.jar \
+{ java -Xmx"${HEAPMEM}"G -jar "$BINDIR"/additionalBamStatistics.jar \
 --input-annovar-file "${TMPFILE}/im.anv" \
 --input-bam-file "$BAM" \
 --reference "${BUILD_PATH}" \
 --output-file  "${TMPFILE}/AddBAM.anv" \
---threads 10
-} || { echo "Error: additionalBamStatistics.jar failed" >&2; exit 1; }
-
-# add flag to VCF using calculated stats
+--threads 10 >&2; } || { echo "Error: additionalBamStatistics.jar failed" >&2; exit 1; }
 
 # create output path
 # ## remove longest match of */ from beginning of string (remove path)
@@ -178,6 +156,8 @@ else
 	OUTPATH="${OUTPUT}/${VOUT%.?cf*}.hairpin.vcf"
 fi
 
+echo "flagging VCF..." >&2
+### add flag to VCF using calculated stats
 "$BASEDIR"/pyenv/bin/python "$BINDIR"/AddBAM_vcf_flagging.py "${TMPFILE}/AddBAM.anv" "$VCF" "$OUTPATH" >&2 || 
 { echo "Error: AddBAM_vcf_flagging.py failed" >&2; exit 1; }
 

@@ -130,7 +130,7 @@ def main(vcf_path, annovar_path, output_path):
         sys.exit('VCF file could not be read!')
     
     try:
-        vr.header.add_filter_line(vcfpy.OrderedDict([('ID', 'HP'), ('Description', 'LCM Hairpin Filter v1.0.3')]))
+        vr.header.add_filter_line(vcfpy.OrderedDict([('ID', 'HP'), ('Description', 'LCM Hairpin Filter v1.0.8')]))
     except Exception as e:
         print(e)
         sys.exit('Error while modifying VCF header!')

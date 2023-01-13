@@ -1,3 +1,0 @@
-# paths to reference genomes and associated SNP dbs
-hg38=/lustre/scratch124/casm/team78pipelines/reference/Homo_sapiens/GRCh38_full_analysis_set_plus_decoy_hla/genome.fa
-hg37=/lustre/scratch124/casm/team78pipelines/reference/Homo_sapiens/GRCh37d5/genome.fa
