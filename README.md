@@ -20,8 +20,7 @@ The various components that have been removed or pared down either produced stat
 
 clone repository and cd into bin/ and run the following to install into a virtual environment:
 ```
-module load python/3.10.1
-python -m venv pyenv
+python3.10 -m venv pyenv
 source pyenv/bin/activate
 pip install -r requirements.txt
 deactivate
