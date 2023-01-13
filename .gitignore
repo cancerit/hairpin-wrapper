@@ -1,0 +1,8 @@
+*.job
+legacy/
+pyenv/
+dat/
+bugfix/
+__pycache__/
+modulefile/
+

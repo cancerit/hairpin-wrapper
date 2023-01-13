@@ -1,0 +1,166 @@
+#!/bin/bash
+
+##################################################
+# Copyright (c) 2023 Genome Research Ltd.
+
+# Author: CASM/Cancer IT <cgphelp@sanger.ac.uk>
+
+
+# This file is part of hairpin-wrapper.
+
+
+# hairpin-wrapper is free software: you can redistribute it and/or modify it under
+# the terms of the GNU Affero General Public License as published by the Free
+# Software Foundation; either version 3 of the License, or (at your option) any
+# later version.
+# This program is distributed in the hope that it will be useful, but WITHOUT
+# ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+# FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more
+# details.
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+##################################################
+
+set -e
+BINDIR="${0%/*}"
+BASEDIR="${BINDIR%/*}"
+OUTPUT="."
+HEAPMEM=10
+DEBUG=false
+
+usage() {
+	echo -e \
+	"Usage: 
+	$(basename "$0") \\
+	[ Mandatory ]
+	-v input VCF \\
+	-b BAM file corresponding to VCF \\
+	-g path to reference genome fasta \\
+	[ Optional ]
+	-o output directory (defaults to current working dir) \\
+	-m set java heap memory (default 10G) \\
+	-h display usage \\
+	
+	Version 1.0.8" >&2
+
+	exit 1
+}
+
+while getopts "v:b:o:g:m:rhd" opt; do
+
+	case "$opt" in 
+		v)
+			VCF="$OPTARG"
+			;; # input VCF
+		b)
+			BAM="$OPTARG"
+			;; # input BAM
+		o)
+			OUTPUT="$OPTARG"
+			;; # path to output directory
+		g)
+			BUILD_PATH="$OPTARG"
+			# path to reference genome fasta
+			;;
+		m)
+			HEAPMEM="$OPTARG"
+			if ! [[ $HEAPMEM =~ ^[0-9]+$ ]] ; then 
+				echo "Error: Heap memory -m must be an integer" >&2
+				exit 1 
+			fi
+			;;
+		d)
+			DEBUG=true
+			;;
+		?)
+			usage
+			;;
+
+	esac
+
+done
+
+if [ -z "$VCF" ] || [ -z "$BAM" ] || [ -z "$BUILD_PATH" ]; then
+	echo "Error: -v, -g, -o and -b require arguments" >&2
+	usage
+fi
+
+if [ ! -f "$VCF" ]; then
+	echo "Error: VCF does not exist!" >&2
+	exit 1
+fi
+
+if [ ! -f "$BAM" ]; then
+	echo "Error: BAM does not exist!" >&2
+	exit 1
+fi
+
+if [ ! -f "$BUILD_PATH" ]; then
+	echo "Error: Reference genome does not exist" >&2
+	exit 1
+fi
+
+if [ ! -f "${BAM}.bai" ] ; then
+	echo "Error: ${BAM}.bai not present!"
+	exit 1
+fi
+
+if [ ! -f "${BAM}.bas" ] ; then
+	echo "Error: ${BAM}.bas not present!"
+	exit 1
+fi
+
+if [ ! -f "${BAM}.met.gz" ] ; then
+	echo "Error: ${BAM}.met.gz not present!"
+	exit 1
+fi
+
+if [ ! -d "$OUTPUT" ]; then
+	echo "Error: Output should be a directory" >&2
+	exit 1
+fi
+
+
+if "$DEBUG"; then
+	TMPFILE="$OUTPUT"
+else
+	# make local temp dir for Mathijs' scripts to output into
+	# and make sure it's cleaned up on exit with trap
+	# do it || if it fails do this
+	trap 'rm -fr "$TMPFILE"' EXIT
+	TMPFILE=$(mktemp -dp .) || 
+	{ echo "Error: could not create temporary file in current working directory" >&2; exit 1; }
+fi
+
+
+# convert to ANNOVAR, the required format for additionalBamStatistics.jar
+{ "$BINDIR"/runScriptImitateANNOVAR.sh -v "$VCF" > "${TMPFILE}/im.anv"; } || 
+{ echo "Error: conversion to annovar failed" >&2; exit 1; } # braces group commands
+
+# calculate statistics
+{ java -Xmx"${HEAPMEM}"G -jar "$BINDIR"/additionalBamStatistics.jar \
+--input-annovar-file "${TMPFILE}/im.anv" \
+--input-bam-file "$BAM" \
+--reference "${BUILD_PATH}" \
+--output-file  "${TMPFILE}/AddBAM.anv" \
+--threads 10 >&2; } || { echo "Error: additionalBamStatistics.jar failed" >&2; exit 1; }
+
+# create output path
+# ## remove longest match of */ from beginning of string (remove path)
+# % remove shortest match of .?cf* from end of string (remove e.g. '.bcf.gz')
+# if checks for trailing slash in provided output dir
+VOUT=${VCF##*/}
+if [ "${OUTPUT: -1}" == "/" ] ; then
+	OUTPATH="${OUTPUT}${VOUT%.?cf*}.hairpin.vcf"
+else
+	OUTPATH="${OUTPUT}/${VOUT%.?cf*}.hairpin.vcf"
+fi
+
+echo "flagging VCF..." >&2
+### add flag to VCF using calculated stats
+"$BASEDIR"/pyenv/bin/python "$BINDIR"/AddBAM_vcf_flagging.py "${TMPFILE}/AddBAM.anv" "$VCF" "$OUTPATH" >&2 || 
+{ echo "Error: AddBAM_vcf_flagging.py failed" >&2; exit 1; }
+
+echo "success!" >&2
+
+exit 0
