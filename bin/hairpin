@@ -35,9 +35,9 @@ usage() {
 	[ Mandatory ]
 	-v input VCF \\
 	-b BAM file corresponding to VCF \\
+	-g path to reference genome fasta \\
 	[ Optional ]
-	-o output path (defaults to current working dir)\\
-	-g path to reference genome \\
+	-o output directory (defaults to current working dir) \\
 	-m set java heap memory (default 10G) \\
 	-h display usage \\
 	
@@ -80,7 +80,7 @@ while getopts "v:b:o:g:m:rhd" opt; do
 
 done
 
-if [ -z "$VCF" ] || [ -z "$BAM" ] || [ -z "$BUILD_PATH"]; then
+if [ -z "$VCF" ] || [ -z "$BAM" ] || [ -z "$BUILD_PATH" ]; then
 	echo "Error: -v, -g, -o and -b require arguments" >&2
 	usage
 fi
@@ -138,16 +138,12 @@ fi
 { echo "Error: conversion to annovar failed" >&2; exit 1; } # braces group commands
 
 # calculate statistics
-{
-java -Xmx"${HEAPMEM}"G -jar "$BINDIR"/additionalBamStatistics.jar \
+{ java -Xmx"${HEAPMEM}"G -jar "$BINDIR"/additionalBamStatistics.jar \
 --input-annovar-file "${TMPFILE}/im.anv" \
 --input-bam-file "$BAM" \
 --reference "${BUILD_PATH}" \
 --output-file  "${TMPFILE}/AddBAM.anv" \
---threads 10
-} || { echo "Error: additionalBamStatistics.jar failed" >&2; exit 1; }
-
-# add flag to VCF using calculated stats
+--threads 10 >&2; } || { echo "Error: additionalBamStatistics.jar failed" >&2; exit 1; }
 
 # create output path
 # ## remove longest match of */ from beginning of string (remove path)
@@ -160,6 +156,8 @@ else
 	OUTPATH="${OUTPUT}/${VOUT%.?cf*}.hairpin.vcf"
 fi
 
+echo "flagging VCF..." >&2
+### add flag to VCF using calculated stats
 "$BASEDIR"/pyenv/bin/python "$BINDIR"/AddBAM_vcf_flagging.py "${TMPFILE}/AddBAM.anv" "$VCF" "$OUTPATH" >&2 || 
 { echo "Error: AddBAM_vcf_flagging.py failed" >&2; exit 1; }
 

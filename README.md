@@ -30,27 +30,24 @@ deactivate
 ### Usage
 
 ```
-hairpin 
--v input VCF path \
--b BAM path \
--o output VCF path \
-[-g] specify genome build (hg37, hg38(default)) \
-[-r] display available reference genomes \
-[-h] display help manpage \
+Usage: 
+        hairpin \
+        [ Mandatory ]
+        -v input VCF \
+        -b BAM file corresponding to VCF \
+        -g path to reference genome fasta \
+        [ Optional ]
+        -o output directory (defaults to current working dir) \
+        -m set java heap memory (default 10G) \
+        -h display usage \
 ```
+You must have the .bai, .bas, and .met.gz files associated with the .bam file in the same directory as the .bam file specified with `-b`.
+The tool will output the input VCF file updated with annotations indicating potential hairpin artificats.
 
-example bsub with suggested resource:
-```
-bsub -R "select[mem>8000] rusage[mem=8000] span[hosts=1]" -M8000 \
--o out.%J.log \
--e err.%J.log \
--n 20 \
-hairpin \
--v VCF_PATH \
--b BAM_PATH \
--o VCF_OUTPUT_PATH \
--g "38"
-```
+### Issues
+
+"Script has failed"
+If the core component of the hairpin process fails it will usually output this cryptic error. Unfortunately, this is caused by external code and we cannot make this error more informative at this time. It is most likely caused by running the script without enough memory available.
 
 ### LICENSE
 
